@@ -2,31 +2,52 @@
 
 namespace App\Http\Controllers;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Http\Request;
 use App\Models\User;
 
+
 class UserController extends Controller
 {
-
+ 
     public function register(Request $request) {
-        $request->validate([
-            'name' => 'required',
+        $validator = Validator::make($request->all(), [
+            'first_name' => 'required',
+            'last_name' => 'required',
             'email' => 'required|email',
+            'course' => 'required_if:type,teacher',
             'password' => 'required|confirmed',
-            'tc' => 'required',
+            'type' => 'required|in:teacher,student',
         ]);
+    
+        if ($validator->fails()) {
+            return response([
+                'message' => 'Password confirmation does not match.',
+                'status' => 'failed'
+            ], 422); 
+        }
+    
         if(User::where('email', $request->email)->first()){
             return response([
                 'message' => 'Email already exists',
                 'status' => 'failed'
             ], 200);
         }
-        $user = User::create([
-            'name'=>$request->name,
-            'email'=>$request->email,
-            'password'=>Hash::make($request->password),
-            'tc'=>json_decode($request->tc),
-        ]);
+    
+        $userData = [
+            'first_name' => $request->first_name,
+            'last_name' => $request->last_name,
+            'email' => $request->email,
+            'password' => Hash::make($request->password),
+            'type' => $request->type,
+        ];
+    
+        if ($request->type === 'teacher') {
+            $userData['course'] = $request->course;
+        }
+    
+        $user = User::create($userData);
+    
         $token = $user->createToken($request->email)->plainTextToken;
         return response([
             'token' => $token,
@@ -36,31 +57,32 @@ class UserController extends Controller
     }
 
     public function login(Request $request) {
-
         $request->validate([
             'email' => 'required|email',
             'password' => 'required',
         ]);
-        
+    
         $user = User::where('email', $request->email)->first();
-        
+    
         if ($user && Hash::check($request->password, $user->password)) {
-
             $token = $user->createToken($request->email)->plainTextToken;
-            
+    
+            $userType = $user->type;
+    
             return response([
                 'token' => $token,
+                'user_type' => $userType,
                 'message' => 'Login Success',
                 'status' => 'success'
             ], 200);
         }
-        
+    
         return response([
-            'message' => 'The Provided Credentials Are Incorrect.',
+            'message' => 'The provided credentials are incorrect.',
             'status' => 'failed'
         ], 401);
     }
-
+    
     public function logout() {
         auth()->user()->tokens()->delete();
     
@@ -69,8 +91,6 @@ class UserController extends Controller
             'status' => 'success'
         ], 200);
     }   
-    
-    // logged in user ka data nikalna ka way
 
     public function logged_user() {
 
@@ -82,8 +102,6 @@ class UserController extends Controller
             'status' => 'success'
         ], 200);
     } 
-    
-    // change password = hum password change after login krty hai
 
     public function change_password(Request $request){
         $request->validate([
